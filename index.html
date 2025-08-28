@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="pl" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rcoin Fund dApp v4</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .btn {
+            font-weight: bold;
+            padding: 0.75rem 1rem;
+            border-radius: 0.5rem;
+            transition: background-color 0.3s, transform 0.1s;
+            width: 100%;
+        }
+        .btn:active {
+            transform: scale(0.98);
+        }
+        .btn-blue { background-color: #3b82f6; color: white; }
+        .btn-blue:hover { background-color: #2563eb; }
+        .btn-red { background-color: #ef4444; color: white; }
+        .btn-red:hover { background-color: #dc2626; }
+        .tab-active { background-color: #3b82f6; color: white; }
+        .tab-inactive { background-color: #374151; color: #d1d5db; }
+        .loader { border-top-color: #3b82f6; animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #1f2937; }
+        ::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #6b7280; }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-200 flex items-center justify-center min-h-screen p-4">
+
+    <div class="w-full max-w-5xl mx-auto">
+        <header class="flex flex-col sm:flex-row justify-between items-center mb-8 gap-4">
+            <div class="flex items-center gap-3">
+                 <svg class="w-10 h-10 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 10v-1m0 0c-1.657 0-3-.895-3-2s1.343-2 3-2 3-.895 3-2-1.343-2-3-2m0 0c-1.11 0-2.08-.402-2.599-1M12 8V7m0 10v1m0 0h.01"></path></svg>
+                <h1 class="text-4xl font-bold text-white">Rcoin Fund</h1>
+            </div>
+            <button id="connectButton" class="btn btn-blue sm:w-auto">
+                Połącz Portfel
+            </button>
+        </header>
+
+        <main id="dappInterface" class="hidden">
+            <!-- Dashboard -->
+            <section class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                <div class="bg-gray-800 p-6 rounded-xl"><h3 class="text-sm font-medium text-gray-400">Twoje Saldo Rcoin</h3><p id="rcoinBalance" class="text-2xl font-semibold text-white mt-1">...</p></div>
+                <div class="bg-gray-800 p-6 rounded-xl"><h3 class="text-sm font-medium text-gray-400">Twoje Saldo USDC</h3><p id="usdcBalance" class="text-2xl font-semibold text-white mt-1">...</p></div>
+                <div class="bg-gray-800 p-6 rounded-xl"><h3 class="text-sm font-medium text-gray-400">Kurs Rcoin</h3><p id="exchangeRate" class="text-2xl font-semibold text-white mt-1">...</p></div>
+            </section>
+
+            <!-- Client Actions -->
+            <section class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <div class="bg-gray-800 p-8 rounded-xl"><h2 class="text-2xl font-bold mb-6 text-white">Wpłata USDC</h2><div class="space-y-4"><div><label for="depositAmount" class="block text-sm font-medium text-gray-400">Kwota</label><input type="number" id="depositAmount" placeholder="0.00" class="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md shadow-sm text-white focus:ring-blue-500 focus:border-blue-500 sm:text-lg p-3"></div><div class="flex space-x-4"><button id="approveButton" class="btn btn-blue">1. Zatwierdź</button><button id="depositButton" class="btn btn-blue">2. Wpłać</button></div></div></div>
+                <div class="bg-gray-800 p-8 rounded-xl"><h2 class="text-2xl font-bold mb-4 text-white">Wypłata</h2><div class="flex border-b border-gray-700 mb-6"><button id="tabInstant" class="tab-active flex-1 py-2 text-center font-semibold transition-colors duration-300 rounded-t-md">Natychmiastowa</button><button id="tabDelayed" class="tab-inactive flex-1 py-2 text-center font-semibold transition-colors duration-300 rounded-t-md">Opóźniona</button></div><div id="instantWithdrawPanel"><p class="text-sm text-gray-400 mb-4">Wypłać natychmiastowo z opłatą <span id="feeInfo">...</span>%.</p><div class="space-y-4"><div><label for="instantWithdrawAmount" class="block text-sm font-medium text-gray-400">Kwota USDC do wypłaty</label><input type="number" id="instantWithdrawAmount" placeholder="0.00" class="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md shadow-sm text-white focus:ring-blue-500 focus:border-blue-500 sm:text-lg p-3"></div><button id="instantWithdrawButton" class="btn btn-red">Wypłać Natychmiast</button></div></div><div id="delayedWithdrawPanel" class="hidden"><div id="requestSection"><p class="text-sm text-gray-400 mb-4">Złóż wniosek o wypłatę bez opłat. Środki będą dostępne po <span id="delayInfo">...</span>.</p><div><label for="delayedWithdrawAmount" class="block text-sm font-medium text-gray-400">Kwota USDC do wypłaty</label><input type="number" id="delayedWithdrawAmount" placeholder="0.00" class="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md shadow-sm text-white focus:ring-blue-500 focus:border-blue-500 sm:text-lg p-3"></div><button id="requestDelayedWithdrawButton" class="mt-4 btn btn-blue">Złóż Wniosek</button></div><div id="manageSection" class="hidden text-center"><p class="text-lg text-gray-300 mb-2">Masz aktywny wniosek o wypłatę:</p><p class="text-3xl font-bold text-white mb-4"><span id="pendingAmount">0.00</span> USDC</p><p id="unlockTime" class="font-semibold mb-6">...</p><div class="space-y-3"><button id="fulfillDelayedWithdrawButton" disabled class="btn btn-blue disabled:bg-gray-500 disabled:cursor-not-allowed">Odbierz Środki</button><button id="cancelDelayedWithdrawButton" class="btn btn-blue">Anuluj Wniosek</button></div></div></div></div>
+            </section>
+
+            <!-- Fund Manager Actions -->
+            <section id="fundManagerSection" class="mt-8 bg-gray-800/50 border border-blue-500/30 p-8 rounded-xl hidden">
+                <h2 class="text-2xl font-bold mb-6 text-blue-300">Panel Menedżera Funduszu</h2>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                    <div class="bg-gray-800 p-6 rounded-xl"><h3 class="text-sm font-medium text-gray-400">Wartość Funduszu (TVL)</h3><p id="tvl" class="text-2xl font-semibold text-white mt-1">...</p></div>
+                    <div class="bg-gray-800 p-6 rounded-xl"><h3 class="text-sm font-medium text-gray-400">Saldo Off-Chain</h3><p id="offChainBalanceDisplay" class="text-2xl font-semibold text-white mt-1">...</p></div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
+                    <div class="space-y-4"><label for="transferToManagerAmount" class="block text-sm font-medium text-gray-400">Transferuj do zarządzania (off-chain)</label><input type="number" id="transferToManagerAmount" placeholder="0.00" class="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md shadow-sm text-white p-3"><button id="transferToManagerButton" class="btn btn-blue">Transferuj USDC</button></div>
+                    <div class="space-y-4"><label for="transferToVaultAmount" class="block text-sm font-medium text-gray-400">Zwróć środki do skarbca</label><input type="number" id="transferToVaultAmount" placeholder="0.00" class="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md shadow-sm text-white p-3"><button id="transferToVaultButton" class="btn btn-blue">Zwróć USDC</button></div>
+                    <div class="space-y-4"><label for="offChainValueAmount" class="block text-sm font-medium text-gray-400">Zaktualizuj wartość aktywów off-chain</label><input type="number" id="offChainValueAmount" placeholder="0.00" class="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md shadow-sm text-white p-3"><button id="updateOffChainValueButton" class="btn btn-blue">Aktualizuj Wartość</button></div>
+                </div>
+
+                <div>
+                    <h3 class="text-xl font-bold mb-4 text-white">Aktywne Wnioski o Wypłatę</h3>
+                    <div class="bg-gray-800 p-4 rounded-lg max-h-60 overflow-y-auto">
+                        <ul id="pendingRequestsList" class="space-y-3">
+                            <!-- JS will inject requests here -->
+                        </ul>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Status Message -->
+        <div id="statusMessage" class="fixed bottom-5 right-5 bg-gray-800 border-l-4 p-4 rounded-lg shadow-lg max-w-sm hidden">
+            <div class="flex items-center">
+                <div id="statusSpinner" class="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-6 w-6 mr-3"></div>
+                <p id="statusText" class="text-white"></p>
+            </div>
+        </div>
+    </div>
+
+<script>
+// --- APPLICATION LOGIC ---
+
+const dApp = {
+    // --- CONFIGURATION ---
+    config: {
+        vaultContractAddress: "0xfe203ef73b69c819796C3a3572609C29Dd0FaFFE",
+        usdcContractAddress: "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582",
+        desiredChainId: 80002, // Polygon Amoy
+        desiredChainHex: '0x13882',
+    },
+
+    // --- STATE ---
+    state: {
+        provider: null,
+        signer: null,
+        userAddress: null,
+        fundManagerAddress: null,
+        contracts: { vault: null, usdc: null },
+    },
+
+    // --- DOM ELEMENTS ---
+    elements: {},
+
+    // --- INITIALIZATION ---
+    async init() {
+        // Cache all DOM elements
+        const ids = ["connectButton", "dappInterface", "rcoinBalance", "usdcBalance", "exchangeRate", "tvl", "approveButton", "depositButton", "depositAmount", "instantWithdrawAmount", "instantWithdrawButton", "delayedWithdrawAmount", "requestDelayedWithdrawButton", "fulfillDelayedWithdrawButton", "cancelDelayedWithdrawButton", "tabInstant", "tabDelayed", "instantWithdrawPanel", "delayedWithdrawPanel", "requestSection", "manageSection", "pendingAmount", "unlockTime", "feeInfo", "delayInfo", "fundManagerSection", "transferToManagerAmount", "transferToManagerButton", "transferToVaultAmount", "transferToVaultButton", "offChainValueAmount", "updateOffChainValueButton", "statusMessage", "statusText", "statusSpinner", "offChainBalanceDisplay", "pendingRequestsList"];
+        ids.forEach(id => this.elements[id] = document.getElementById(id));
+
+        this.setupEventListeners();
+
+        if (window.ethereum && window.ethereum.selectedAddress) {
+            this.connectWallet();
+        }
+    },
+
+    // --- EVENT LISTENERS ---
+    setupEventListeners() {
+        this.elements.connectButton.addEventListener('click', () => this.connectWallet());
+        this.elements.approveButton.addEventListener('click', () => this.handleApprove());
+        this.elements.depositButton.addEventListener('click', () => this.handleDeposit());
+        this.elements.instantWithdrawButton.addEventListener('click', () => this.handleInstantWithdraw());
+        this.elements.requestDelayedWithdrawButton.addEventListener('click', () => this.handleRequestDelayedWithdraw());
+        this.elements.fulfillDelayedWithdrawButton.addEventListener('click', () => this.handleFulfillDelayedWithdraw());
+        this.elements.cancelDelayedWithdrawButton.addEventListener('click', () => this.handleCancelDelayedWithdraw());
+        this.elements.tabInstant.addEventListener('click', () => this.switchTab('instant'));
+        this.elements.tabDelayed.addEventListener('click', () => this.switchTab('delayed'));
+        
+        // Manager listeners
+        this.elements.transferToManagerButton.addEventListener('click', () => this.handleTransferToManager());
+        this.elements.transferToVaultButton.addEventListener('click', () => this.handleTransferToVault());
+        this.elements.updateOffChainValueButton.addEventListener('click', () => this.handleUpdateOffChainValue());
+
+        if (window.ethereum) {
+            window.ethereum.on('accountsChanged', (accounts) => this.handleAccountsChanged(accounts));
+            window.ethereum.on('chainChanged', () => window.location.reload());
+        }
+    },
+
+    // --- WALLET & CONTRACTS ---
+    async connectWallet() {
+        if (!window.ethereum) return this.showStatus("Zainstaluj MetaMask!", "error");
+        try {
+            await this.checkNetwork();
+            const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+            this.handleAccountsChanged(accounts);
+        } catch (error) {
+            console.error("Błąd połączenia z portfelem:", error);
+            this.showStatus("Błąd połączenia z portfelem", "error");
+        }
+    },
+
+    async checkNetwork() {
+        const currentChainId = await window.ethereum.request({ method: 'eth_chainId' });
+        if (currentChainId !== this.config.desiredChainHex) {
+            this.showStatus("Proszę przełączyć na sieć Polygon Amoy", "info");
+            try {
+                await window.ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: this.config.desiredChainHex }] });
+            } catch (switchError) {
+                if (switchError.code === 4902) this.showStatus("Dodaj sieć Polygon Amoy do MetaMask", "error");
+                else throw switchError;
+            }
+        }
+    },
+    
+    async initializeContracts() {
+        this.state.provider = new ethers.providers.Web3Provider(window.ethereum);
+        this.state.signer = this.state.provider.getSigner();
+        
+        const vaultABI = [{"inputs":[{"internalType":"address","name":"fundManager_","type":"address"},{"internalType":"address","name":"feeRecipient_","type":"address"}],"stateMutability":"nonpayable","type":"constructor"},{"inputs":[],"name":"ERC4626ExceededMaxTotalAssets","type":"error"},{"inputs":[],"name":"ERC4626InvalidReceiver","type":"error"},{"inputs":[],"name":"ERC4626InvalidSender","type":"error"},{"inputs":[],"name":"ERC4626InvalidShares","type":"error"},{"inputs":[],"name":"ERC4626ZeroAssets","type":"error"},{"inputs":[],"name":"ERC4626ZeroShares","type":"error"},{"inputs":[{"internalType":"address","name":"owner","type":"address"}],"name":"OwnableInvalidOwner","type":"error"},{"inputs":[{"internalType":"address","name":"account","type":"address"}],"name":"OwnableUnauthorizedAccount","type":"error"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"owner","type":"address"},{"indexed":true,"internalType":"address","name":"spender","type":"address"},{"indexed":false,"internalType":"uint256","name":"value","type":"uint256"}],"name":"Approval","type":"event"},{"anonymous":false,"inputs":[{"indexed":false,"internalType":"uint256","name":"amount","type":"uint256"}],"name":"AssetsTransferredToManager","type":"event"},{"anonymous":false,"inputs":[{"indexed":false,"internalType":"uint256","name":"amount","type":"uint256"}],"name":"AssetsTransferredToVault","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"user","type":"address"},{"indexed":false,"internalType":"uint256","name":"assetsToRedeem","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"unlockTime","type":"uint256"}],"name":"DelayedWithdrawalRequested","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"caller","type":"address"},{"indexed":true,"internalType":"address","name":"owner","type":"address"},{"indexed":false,"internalType":"uint256","name":"assets","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"shares","type":"uint256"}],"name":"Deposit","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"oldRecipient","type":"address"},{"indexed":true,"internalType":"address","name":"newRecipient","type":"address"}],"name":"FeeRecipientUpdated","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"user","type":"address"},{"indexed":false,"internalType":"uint256","name":"assetsRedeemed","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"feeAmount","type":"uint256"}],"name":"InstantWithdrawal","type":"event"},{"anonymous":false,"inputs":[{"indexed":false,"internalType":"uint256","name":"newTotalValue","type":"uint256"}],"name":"OffChainAssetValueUpdated","type":"event"},{"anonymous":false,"inputs":[{"indexed":false,"internalType":"uint256","name":"newBalance","type":"uint256"}],"name":"OffChainBalanceUpdated","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"previousOwner","type":"address"},{"indexed":true,"internalType":"address","name":"newOwner","type":"address"}],"name":"OwnershipTransferred","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"from","type":"address"},{"indexed":true,"internalType":"address","name":"to","type":"address"},{"indexed":false,"internalType":"uint256","name":"value","type":"uint256"}],"name":"Transfer","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"caller","type":"address"},{"indexed":true,"internalType":"address","name":"receiver","type":"address"},{"indexed":true,"internalType":"address","name":"owner","type":"address"},{"indexed":false,"internalType":"uint256","name":"assets","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"shares","type":"uint256"}],"name":"Withdraw","type":"event"},{"inputs":[{"internalType":"address","name":"owner","type":"address"},{"internalType":"address","name":"spender","type":"address"}],"name":"allowance","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"spender","type":"address"},{"internalType":"uint256","name":"value","type":"uint256"}],"name":"approve","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"asset","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"account","type":"address"}],"name":"balanceOf","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"cancelDelayedWithdrawal","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"shares","type":"uint256"}],"name":"convertToAssets","outputs":[{"internalType":"uint256","name":"assets","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"assets","type":"uint256"}],"name":"convertToShares","outputs":[{"internalType":"uint256","name":"shares","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"decimals","outputs":[{"internalType":"uint8","name":"","type":"uint8"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"assets","type":"uint256"},{"internalType":"address","name":"receiver","type":"address"}],"name":"deposit","outputs":[{"internalType":"uint256","name":"shares","type":"uint256"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"feeRecipient","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"fulfillDelayedWithdrawal","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"fundManager","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"getExchangeRate","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"getOffChainBalance","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"assetsToRedeem","type":"uint256"}],"name":"instantWithdrawal","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"instantWithdrawalFeeBps","outputs":[{"internalType":"uint16","name":"","type":"uint16"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"","type":"address"}],"name":"maxDeposit","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"","type":"address"}],"name":"maxMint","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"owner","type":"address"}],"name":"maxRedeem","outputs":[{"internalType":"uint256","name":"shares","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"owner","type":"address"}],"name":"maxWithdraw","outputs":[{"internalType":"uint256","name":"assets","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"shares","type":"uint256"},{"internalType":"address","name":"receiver","type":"address"}],"name":"mint","outputs":[{"internalType":"uint256","name":"assets","type":"uint256"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"name","outputs":[{"internalType":"string","name":"","type":"string"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"owner","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"assets","type":"uint256"}],"name":"previewDeposit","outputs":[{"internalType":"uint256","name":"shares","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"shares","type":"uint256"}],"name":"previewMint","outputs":[{"internalType":"uint256","name":"assets","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"shares","type":"uint256"}],"name":"previewRedeem","outputs":[{"internalType":"uint256","name":"assets","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"assets","type":"uint256"}],"name":"previewWithdraw","outputs":[{"internalType":"uint256","name":"shares","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"","type":"uint256"},{"internalType":"address","name":"","type":"address"},{"internalType":"address","name":"","type":"address"}],"name":"redeem","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"renounceOwnership","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"assetsToRedeem","type":"uint256"}],"name":"requestDelayedWithdrawal","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"newFeeRecipient","type":"address"}],"name":"setFeeRecipient","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"newFundManager","type":"address"}],"name":"setFundManager","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint16","name":"newFeeBps","type":"uint16"}],"name":"setInstantWithdrawalFee","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"newDelay","type":"uint256"}],"name":"setWithdrawalDelay","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"symbol","outputs":[{"internalType":"string","name":"","type":"string"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"totalAssets","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"totalSupply","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"value","type":"uint256"}],"name":"transfer","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"assetsToTransfer","type":"uint256"}],"name":"transferAssetsToFundManager","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"assetsToTransfer","type":"uint256"}],"name":"transferAssetsToVault","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"from","type":"address"},{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"value","type":"uint256"}],"name":"transferFrom","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"newOwner","type":"address"}],"name":"transferOwnership","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"newTotalValue","type":"uint256"}],"name":"updateOffChainAssetValue","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"","type":"uint256"},{"internalType":"address","name":"","type":"address"},{"internalType":"address","name":"","type":"address"}],"name":"withdraw","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"withdrawalDelayPeriod","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"","type":"address"}],"name":"withdrawalRequests","outputs":[{"internalType":"uint256","name":"assets","type":"uint256"},{"internalType":"uint256","name":"timestamp","type":"uint256"}],"stateMutability":"view","type":"function"}];
+        const usdcABI = [{"constant":true,"inputs":[],"name":"name","outputs":[{"name":"","type":"string"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":false,"inputs":[{"name":"_spender","type":"address"},{"name":"_value","type":"uint256"}],"name":"approve","outputs":[{"name":"","type":"bool"}],"payable":false,"stateMutability":"nonpayable","type":"function"},{"constant":true,"inputs":[],"name":"totalSupply","outputs":[{"name":"","type":"uint256"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":false,"inputs":[{"name":"_from","type":"address"},{"name":"_to","type":"address"},{"name":"_value","type":"uint256"}],"name":"transferFrom","outputs":[{"name":"","type":"bool"}],"payable":false,"stateMutability":"nonpayable","type":"function"},{"constant":true,"inputs":[],"name":"decimals","outputs":[{"name":"","type":"uint8"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":true,"inputs":[{"name":"_owner","type":"address"}],"name":"balanceOf","outputs":[{"name":"balance","type":"uint256"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":true,"inputs":[],"name":"symbol","outputs":[{"name":"","type":"string"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":false,"inputs":[{"name":"_to","type":"address"},{"name":"_value","type":"uint256"}],"name":"transfer","outputs":[{"name":"","type":"bool"}],"payable":false,"stateMutability":"nonpayable","type":"function"},{"constant":true,"inputs":[{"name":"_owner","type":"address"},{"name":"_spender","type":"address"}],"name":"allowance","outputs":[{"name":"","type":"uint256"}],"payable":false,"stateMutability":"view","type":"function"},{"payable":true,"stateMutability":"payable","type":"fallback"}];
+
+        this.state.contracts.vault = new ethers.Contract(this.config.vaultContractAddress, vaultABI, this.state.signer);
+        this.state.contracts.usdc = new ethers.Contract(this.config.usdcContractAddress, usdcABI, this.state.signer);
+        this.state.fundManagerAddress = await this.state.contracts.vault.fundManager();
+    },
+
+    // --- UI UPDATES ---
+    async updateAllUI() {
+        this.elements.dappInterface.classList.remove('hidden');
+        this.elements.connectButton.textContent = `${this.state.userAddress.substring(0, 6)}...${this.state.userAddress.substring(38)}`;
+        
+        const isManager = this.state.userAddress.toLowerCase() === this.state.fundManagerAddress.toLowerCase();
+
+        await this.updateDashboard();
+        await this.updateDelayedWithdrawalStatus();
+        await this.updateStaticInfo();
+        this.updateManagerPanelVisibility(isManager);
+        if (isManager) {
+            await this.updateManagerDashboard();
+            await this.loadAndDisplayPendingRequests();
+            this.setupManagerEventListeners();
+        }
+    },
+
+    async updateDashboard() {
+        try {
+            const [rcoinBal, usdcBal, rate, vaultDecimals, usdcDecimals] = await Promise.all([
+                this.state.contracts.vault.balanceOf(this.state.userAddress),
+                this.state.contracts.usdc.balanceOf(this.state.userAddress),
+                this.state.contracts.vault.getExchangeRate(),
+                this.state.contracts.vault.decimals(),
+                this.state.contracts.usdc.decimals(),
+            ]);
+            
+            this.elements.rcoinBalance.textContent = parseFloat(ethers.utils.formatUnits(rcoinBal, vaultDecimals)).toFixed(2);
+            this.elements.usdcBalance.textContent = parseFloat(ethers.utils.formatUnits(usdcBal, usdcDecimals)).toFixed(2);
+            this.elements.exchangeRate.textContent = `${parseFloat(ethers.utils.formatEther(rate)).toFixed(2)} USDC`;
+        } catch (error) {
+            console.error("Błąd odświeżania danych publicznych:", error);
+            this.showStatus("Błąd odświeżania danych", "error");
+        }
+    },
+
+    async updateManagerDashboard() {
+        try {
+            const [totalAssets, offChainBalance, usdcDecimals] = await Promise.all([
+                this.state.contracts.vault.totalAssets(),
+                this.state.contracts.vault.getOffChainBalance(),
+                this.state.contracts.usdc.decimals(),
+            ]);
+            this.elements.tvl.textContent = `${parseFloat(ethers.utils.formatUnits(totalAssets, usdcDecimals)).toFixed(2)} USDC`;
+            this.elements.offChainBalanceDisplay.textContent = `${parseFloat(ethers.utils.formatUnits(offChainBalance, usdcDecimals)).toFixed(2)} USDC`;
+        } catch (error) {
+            console.error("Błąd odświeżania danych menedżera:", error);
+            this.showStatus("Błąd danych menedżera", "error");
+        }
+    },
+
+    async updateDelayedWithdrawalStatus() {
+        try {
+            const request = await this.state.contracts.vault.withdrawalRequests(this.state.userAddress);
+            if (request.timestamp.gt(0)) {
+                this.elements.requestSection.classList.add('hidden');
+                this.elements.manageSection.classList.remove('hidden');
+                const usdcDecimals = await this.state.contracts.usdc.decimals();
+                this.elements.pendingAmount.textContent = ethers.utils.formatUnits(request.assets, usdcDecimals);
+                const delay = await this.state.contracts.vault.withdrawalDelayPeriod();
+                const unlockTimestamp = request.timestamp.add(delay).toNumber();
+                const now = Math.floor(Date.now() / 1000);
+                if (now >= unlockTimestamp) {
+                    this.elements.unlockTime.textContent = "Środki gotowe do odbioru!";
+                    this.elements.unlockTime.className = 'font-semibold mb-6 text-green-400';
+                    this.elements.fulfillDelayedWithdrawButton.disabled = false;
+                } else {
+                    const timeLeft = unlockTimestamp - now;
+                    this.elements.unlockTime.textContent = `Dostępne za: ${this.formatTime(timeLeft)}`;
+                    this.elements.unlockTime.className = 'font-semibold mb-6 text-blue-400';
+                    this.elements.fulfillDelayedWithdrawButton.disabled = true;
+                }
+            } else {
+                this.elements.requestSection.classList.remove('hidden');
+                this.elements.manageSection.classList.add('hidden');
+            }
+        } catch (error) { console.error("Błąd sprawdzania statusu wypłaty:", error); }
+    },
+    
+    async updateStaticInfo() {
+        try {
+            const [fee, delay] = await Promise.all([
+                this.state.contracts.vault.instantWithdrawalFeeBps(),
+                this.state.contracts.vault.withdrawalDelayPeriod()
+            ]);
+            this.elements.feeInfo.textContent = (fee / 100).toFixed(2);
+            this.elements.delayInfo.textContent = this.formatTime(delay.toNumber());
+        } catch(e) { console.error("Błąd pobierania statycznych danych", e); }
+    },
+
+    updateManagerPanelVisibility(isManager) {
+        this.elements.fundManagerSection.classList.toggle('hidden', !isManager);
+    },
+
+    // --- HANDLERS ---
+    async handleAccountsChanged(accounts) {
+        if (accounts.length === 0) {
+            this.elements.dappInterface.classList.add('hidden');
+            this.elements.connectButton.textContent = 'Połącz Portfel';
+            this.state.userAddress = null;
+        } else {
+            this.state.userAddress = accounts[0];
+            await this.initializeContracts();
+            await this.updateAllUI();
+        }
+    },
+
+    async handleTransaction(txPromise, { successMessage, inputToClear }) {
+        try {
+            this.showStatus("Oczekiwanie na transakcję...", "info");
+            const tx = await txPromise;
+            this.showStatus("Przetwarzanie transakcji...", "info");
+            await tx.wait();
+            this.showStatus(successMessage, "success");
+            if (inputToClear) inputToClear.value = "";
+            await this.updateAllUI();
+        } catch (error) {
+            console.error("Błąd transakcji:", error);
+            const reason = error.reason || "Transakcja odrzucona";
+            this.showStatus(`Błąd: ${reason}`, "error");
+        }
+    },
+    
+    // --- CLIENT HANDLERS ---
+    async handleApprove() {
+        const amount = this.elements.depositAmount.value;
+        if (!amount || parseFloat(amount) <= 0) return this.showStatus("Wprowadź poprawną kwotę", "error");
+        const usdcDecimals = await this.state.contracts.usdc.decimals();
+        const amountInWei = ethers.utils.parseUnits(amount, usdcDecimals);
+        this.handleTransaction(this.state.contracts.usdc.approve(this.config.vaultContractAddress, amountInWei), { successMessage: "Zatwierdzono pomyślnie!" });
+    },
+    async handleDeposit() {
+        const amount = this.elements.depositAmount.value;
+        if (!amount || parseFloat(amount) <= 0) return this.showStatus("Wprowadź poprawną kwotę", "error");
+        const usdcDecimals = await this.state.contracts.usdc.decimals();
+        const amountInWei = ethers.utils.parseUnits(amount, usdcDecimals);
+        this.handleTransaction(this.state.contracts.vault.deposit(amountInWei, this.state.userAddress), { successMessage: "Wpłata zakończona sukcesem!", inputToClear: this.elements.depositAmount });
+    },
+    async handleInstantWithdraw() {
+        const amount = this.elements.instantWithdrawAmount.value;
+        if (!amount || parseFloat(amount) <= 0) return this.showStatus("Wprowadź poprawną kwotę", "error");
+        const usdcDecimals = await this.state.contracts.usdc.decimals();
+        const amountInWei = ethers.utils.parseUnits(amount, usdcDecimals);
+        this.handleTransaction(this.state.contracts.vault.instantWithdrawal(amountInWei), { successMessage: "Natychmiastowa wypłata zakończona!", inputToClear: this.elements.instantWithdrawAmount });
+    },
+    async handleRequestDelayedWithdraw() {
+        const amount = this.elements.delayedWithdrawAmount.value;
+        if (!amount || parseFloat(amount) <= 0) return this.showStatus("Wprowadź poprawną kwotę", "error");
+        const usdcDecimals = await this.state.contracts.usdc.decimals();
+        const amountInWei = ethers.utils.parseUnits(amount, usdcDecimals);
+        this.handleTransaction(this.state.contracts.vault.requestDelayedWithdrawal(amountInWei), { successMessage: "Wniosek o wypłatę złożony!", inputToClear: this.elements.delayedWithdrawAmount });
+    },
+    handleFulfillDelayedWithdraw() { this.handleTransaction(this.state.contracts.vault.fulfillDelayedWithdrawal(), { successMessage: "Środki zostały wypłacone!" }); },
+    handleCancelDelayedWithdraw() { this.handleTransaction(this.state.contracts.vault.cancelDelayedWithdrawal(), { successMessage: "Wniosek o wypłatę anulowany." }); },
+    
+    // --- MANAGER HANDLERS & FEATURES ---
+    async handleTransferToManager() {
+        const amount = this.elements.transferToManagerAmount.value;
+        if (!amount || parseFloat(amount) <= 0) return this.showStatus("Wprowadź poprawną kwotę", "error");
+        const usdcDecimals = await this.state.contracts.usdc.decimals();
+        const amountInWei = ethers.utils.parseUnits(amount, usdcDecimals);
+        this.handleTransaction(this.state.contracts.vault.transferAssetsToFundManager(amountInWei), { successMessage: "Środki przekazane do zarządzania!", inputToClear: this.elements.transferToManagerAmount });
+    },
+    async handleTransferToVault() {
+        const amount = this.elements.transferToVaultAmount.value;
+        if (!amount || parseFloat(amount) <= 0) return this.showStatus("Wprowadź poprawną kwotę", "error");
+        const usdcDecimals = await this.state.contracts.usdc.decimals();
+        const amountInWei = ethers.utils.parseUnits(amount, usdcDecimals);
+        this.handleTransaction(this.state.contracts.vault.transferAssetsToVault(amountInWei), { successMessage: "Środki zwrócone do skarbca!", inputToClear: this.elements.transferToVaultAmount });
+    },
+    async handleUpdateOffChainValue() {
+        const amount = this.elements.offChainValueAmount.value;
+        if (amount === "" || parseFloat(amount) < 0) return this.showStatus("Wprowadź poprawną kwotę", "error");
+        const usdcDecimals = await this.state.contracts.usdc.decimals();
+        const amountInWei = ethers.utils.parseUnits(amount, usdcDecimals);
+        this.handleTransaction(this.state.contracts.vault.updateOffChainAssetValue(amountInWei), { successMessage: "Wartość aktywów off-chain zaktualizowana!", inputToClear: this.elements.offChainValueAmount });
+    },
+    setupManagerEventListeners() {
+        this.state.contracts.vault.on('DelayedWithdrawalRequested', () => {
+            this.showStatus("Nowy wniosek o wypłatę!", "info");
+            this.loadAndDisplayPendingRequests();
+        });
+        this.state.contracts.vault.on('DelayedWithdrawalCanceled', () => this.loadAndDisplayPendingRequests());
+        this.state.contracts.vault.on('Withdraw', (caller, receiver, owner, assets, shares) => {
+            // A withdraw event can mean a fulfilled request
+            if(this.state.userAddress.toLowerCase() === this.state.fundManagerAddress.toLowerCase()) {
+                this.loadAndDisplayPendingRequests();
+            }
+        });
+    },
+    async loadAndDisplayPendingRequests() {
+        this.elements.pendingRequestsList.innerHTML = '<li><p class="text-gray-400">Ładowanie wniosków...</p></li>';
+        try {
+            const filter = this.state.contracts.vault.filters.DelayedWithdrawalRequested();
+            const logs = await this.state.provider.getLogs({ address: this.config.vaultContractAddress, fromBlock: 0, toBlock: 'latest', topics: filter.topics });
+            const events = logs.map(log => this.state.contracts.vault.interface.parseLog(log));
+            
+            this.elements.pendingRequestsList.innerHTML = '';
+            let activeRequestsFound = false;
+
+            for (const event of events) {
+                const user = event.args.user;
+                const request = await this.state.contracts.vault.withdrawalRequests(user);
+                if (request.assets.gt(0)) {
+                    activeRequestsFound = true;
+                    this.displayPendingRequest(user, request);
+                }
+            }
+            if (!activeRequestsFound) {
+                this.elements.pendingRequestsList.innerHTML = '<li><p class="text-gray-400">Brak aktywnych wniosków.</p></li>';
+            }
+        } catch (error) {
+            console.error("Błąd ładowania wniosków:", error);
+            this.elements.pendingRequestsList.innerHTML = '<li><p class="text-red-400">Błąd ładowania wniosków.</p></li>';
+        }
+    },
+    async displayPendingRequest(user, request) {
+        const li = document.createElement('li');
+        li.className = 'bg-gray-700/50 p-3 rounded-md';
+        const usdcDecimals = await this.state.contracts.usdc.decimals();
+        const amount = parseFloat(ethers.utils.formatUnits(request.assets, usdcDecimals)).toFixed(2);
+        const userShort = `${user.substring(0, 6)}...${user.substring(38)}`;
+        li.innerHTML = `<div class="flex justify-between items-center"><div><p class="text-sm text-gray-400">${userShort}</p><p class="text-white font-bold">${amount} USDC</p></div></div>`;
+        this.elements.pendingRequestsList.appendChild(li);
+    },
+
+    // --- UTILS ---
+    switchTab(tab) {
+        const isInstant = tab === 'instant';
+        this.elements.tabInstant.classList.toggle('tab-active', isInstant); this.elements.tabInstant.classList.toggle('tab-inactive', !isInstant);
+        this.elements.tabDelayed.classList.toggle('tab-active', !isInstant); this.elements.tabDelayed.classList.toggle('tab-inactive', isInstant);
+        this.elements.instantWithdrawPanel.classList.toggle('hidden', !isInstant); this.elements.delayedWithdrawPanel.classList.toggle('hidden', isInstant);
+    },
+    showStatus(message, type = "info", duration = 4000) {
+        this.elements.statusText.textContent = message;
+        const { statusMessage, statusSpinner } = this.elements;
+        statusMessage.classList.remove('hidden', 'border-red-500', 'border-green-500', 'border-blue-500');
+        statusSpinner.classList.toggle('hidden', type !== 'info');
+        const typeClasses = { info: 'border-blue-500', success: 'border-green-500', error: 'border-red-500' };
+        statusMessage.classList.add(typeClasses[type]);
+        if (type !== 'info') setTimeout(() => statusMessage.classList.add('hidden'), duration);
+    },
+    formatTime(seconds) {
+        const d = Math.floor(seconds / 86400); const h = Math.floor((seconds % 86400) / 3600); const m = Math.floor((seconds % 3600) / 60);
+        let result = '';
+        if (d > 0) result += `${d}d `; if (h > 0) result += `${h}g `; if (m > 0) result += `${m}m`;
+        return result.trim() || '0s';
+    },
+};
+
+window.addEventListener('load', () => dApp.init());
+
+</script>
+</body>
+</html>
+
